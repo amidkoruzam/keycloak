@@ -1,88 +1,46 @@
-const jwt = require("jsonwebtoken");
-const request = require("request-promise");
+import jwt from "jsonwebtoken";
+import fetch from "node-fetch";
+import express from "express";
 
-const keycloakUrl = "https://your-keycloak-url/auth";
-const realm = "your-realm";
-const clientId = "your-client-id";
-const clientSecret = "your-client-secret";
+const keycloakUrl = "http://keycloak:8080";
+const realm = "app";
+const clientId = "app";
+const clientSecret = "hwS5JZujmfucO4R6VVTvxSQjjugD5CHe";
 
-const generateToken = async (email, password) => {
-  const options = {
-    method: "POST",
-    uri: `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`,
-    form: {
-      grant_type: "password",
-      client_id: clientId,
-      client_secret: clientSecret,
-      username: email,
-      password: password,
-    },
-    json: true,
-  };
+const app = express();
 
-  const token = await request(options);
-  return token.access_token;
-};
+app.use(express.json());
 
-const authenticate = (req, res, next) => {
-  const token = req.headers.authorization;
-
-  if (!token) {
-    return res.status(401).send("Unauthorized");
-  }
-
-  jwt.verify(token, clientSecret, (err, decoded) => {
-    if (err) {
-      return res.status(401).send("Unauthorized");
-    }
-
-    req.user = decoded;
-    next();
+const getTokens = async (email, password) => {
+  const data = new URLSearchParams({
+    grant_type: "password",
+    client_id: clientId,
+    client_secret: clientSecret,
+    username: email,
+    password: password,
   });
-};
 
-app.get("/protected", authenticate, (req, res) => {
-  if (!req.user || !req.user.realm_access || !req.user.realm_access.roles) {
-    return res.status(403).send("Forbidden");
-  }
+  const url = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`;
 
-  const roles = req.user.realm_access.roles;
-  if (!roles.includes("user")) {
-    return res.status(403).send("Forbidden");
-  }
-
-  res.send("Protected route");
-});
-
-const refreshToken = async (refreshToken) => {
   const options = {
     method: "POST",
-    uri: `${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`,
-    form: {
-      grant_type: "refresh_token",
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
+    body: data,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    json: true,
   };
 
-  const token = await request(options);
-  return token.access_token;
+  console.log(url, options);
+
+  const res = await fetch(url, options);
+  return res.json();
 };
 
-app.get("/refresh-token", (req, res) => {
-  const rToken = req.headers.authorization;
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  const tokens = await getTokens(email, password);
 
-  if (!rToken) {
-    return res.status(401).send("Unauthorized");
-  }
-
-  refreshToken(rToken)
-    .then((token) => {
-      res.send({ access_token: token });
-    })
-    .catch((err) => {
-      res.status(401).send("Unauthorized");
-    });
+  return res.send(res.json(tokens));
 });
+
+app.listen(3000);
